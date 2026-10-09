@@ -1,0 +1,42 @@
+logging:
+  file:
+    enable: True
+    level: INFO
+    path: logs
+    rotation: "10 MB"
+    retention: "7 days"
+  console:
+    enable: True
+    level: INFO
+
+db_meta:
+  host: localhost
+  port: 3306
+  user: atguigu
+  password: meta
+
+db_dw:
+  host: localhost
+  port: 3306
+  user: atguigu
+  password: Atguigu.123
+  database: dw
+
+qdrant:
+  host: localhost
+  port: 6333
+  embedding_size: 1024
+
+embedding:
+  host: localhost
+  port: 8081
+  embedding_size: 1024
+
+es:
+  host: localhost
+  port: 9200
+  index_name: data_agent
+
+llm:
+  model_name: Qwen/Qwen3-32B
+  api_key: sk-xrdenraimcuhtnjgwnyxuzrkvkyngntihvsmxjaeuxcheevi
