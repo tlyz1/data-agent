@@ -22,7 +22,7 @@ services:
     container_name: elasticsearch
     restart: unless-stopped
     environment:
-      discovery.type: single-node
+      discovery.type: single-nodes
       xpack.security.enabled: "false"
     ports:
       - "9200:9200"

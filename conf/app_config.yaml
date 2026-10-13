@@ -1,19 +1,20 @@
 logging:
   file:
-    enable: True
+    enable: true
     level: INFO
     path: logs
     rotation: "10 MB"
     retention: "7 days"
   console:
-    enable: True
+    enable: true
     level: INFO
 
 db_meta:
   host: localhost
   port: 3306
   user: atguigu
-  password: meta
+  password: Atguigu.123
+  database: meta
 
 db_dw:
   host: localhost
@@ -30,7 +31,8 @@ qdrant:
 embedding:
   host: localhost
   port: 8081
-  embedding_size: 1024
+  model: BAAI/bge-large-zh-v1.5
+
 
 es:
   host: localhost
@@ -40,3 +42,4 @@ es:
 llm:
   model_name: Qwen/Qwen3-32B
   api_key: sk-xrdenraimcuhtnjgwnyxuzrkvkyngntihvsmxjaeuxcheevi
+
