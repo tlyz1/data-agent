@@ -1,9 +1,9 @@
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+
 class DwMysqlRepository:
-    #实现模拟数据仓库（dw库）的读写操作
-    def __init__(self, session: AsyncSession):
+    def __init__(self,session:AsyncSession):
         self.session = session
 
     async def get_column_types(self, table_name:str)->dict[str,str]:
@@ -20,15 +20,41 @@ class DwMysqlRepository:
         #获取结果 [(row(Field=order_id,Type=varchar)),(),()]
         return {row.Field: row.Type for row in result.fetchall()}
 
-    async def get_column_values(self, table_name: str, column_name: str, limit: int = 10):
+    async def get_column_values(self, table_name:str, column_name:str,limit:int=10):
         """
         查询字段值
         :param table_name:
         :param column_name:
         :return:
         """
-        sql =f"select distinct {column_name} from {table_name} limit {limit}"
-
-        result=await self.session.execute(text(sql))
+        # 定义sql
+        sql = f"select distinct {column_name}  from {table_name} limit {limit}"
+        # 执行sql
+        result = await self.session.execute(text(sql))
+        # 解析结果
         return result.scalars().fetchall()
 
+    async def get_db_info(self):
+
+        # 获取版本
+        result =await self.session.execute(text("select version()"))
+        # 获取版本信息
+        version=result.scalar()
+
+        # 获取方言
+        dialect = self.session.get_bind().dialect.name
+
+
+        return {"version":version,"dialect":dialect}
+
+    async def validate_sql(self, sql:str):
+        # i = 1/0
+        await self.session.execute(text(f"explain {sql}"))
+
+    async def execute_sql(self, sql:str):
+
+        # 执行sql
+        result = await self.session.execute(text(sql))
+        #结果 [row()，row(),row()]--->[{RowMapping},{RowMapping},{RowMapping}]
+        # return result.mappings().fetchall()
+        return [dict(row) for row in result.mappings().fetchall()]

@@ -28,7 +28,7 @@ class MetricInfoState(TypedDict):
     relevant_columns: list[str]
     alias: list[str]
 
-
+#时间实体
 class DateInfoState(TypedDict):
     date: str
     weekday: str

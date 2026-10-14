@@ -14,6 +14,7 @@ class TeiEmbeddingsClient:
     该类的 model 参数只接受 HuggingFace 仓库 id（传 URL 会直接报错），
     并且它在构造时会把内部 client 固定成官方 Inference API，无法指向本地 TEI。
     这里直接调用 TEI 的 /embed 接口，保持与 langchain Embeddings 一致的调用方式：
+    embed_query / aembed_query         -> list[float]
     embed_documents / aembed_documents -> list[list[float]]
     """
 
@@ -68,6 +69,24 @@ class TeiEmbeddingsClient:
                 embeddings.extend(self._parse(response))
         return embeddings
 
+    def embed_query(self, text: str) -> list[float]:
+        """
+        同步单条向量化（对齐 langchain Embeddings 接口）
+        :param text:
+        :return: [0.1,0.2,...]
+        """
+        # TEI 的 /embed 接口同样支持单条文本输入，这里复用批量逻辑取第一条
+        return self.embed_documents([text])[0]
+
+    async def aembed_query(self, text: str) -> list[float]:
+        """
+        异步单条向量化（对齐 langchain Embeddings 接口）
+        :param text:
+        :return: [0.1,0.2,...]
+        """
+        # TEI 的 /embed 接口同样支持单条文本输入，这里复用批量逻辑取第一条
+        return (await self.aembed_documents([text]))[0]
+
 
 class EmbeddingClientManager:
 
@@ -83,6 +102,8 @@ class EmbeddingClientManager:
             base_url=self._get_url(),
             model=self.config.model,
         )
+
+
 embedding_client_manager =EmbeddingClientManager(app_config.embedding)
 
 
@@ -96,12 +117,12 @@ if __name__ == '__main__':
 
         # 定义文本
         text = "你好，我爱中国"
-        # 转化向量
-        result=await client.aembed_documents([text])
+        # 单条向量化
+        result=await client.aembed_query(text)
 
         print(type(result))
         print(len(result))
-        print(len(result[0]))
+        print(result[:5])
 
     asyncio.run(test())
 
