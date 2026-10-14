@@ -17,63 +17,38 @@
 
 ## 系统架构
 
-```mermaid
-flowchart LR
-    subgraph Client[前端]
-        UI[Vue 3 对话界面<br/>Vite Dev Server]
-    end
+请求链路：
 
-    subgraph API[FastAPI 服务]
-        RT[POST /api/query<br/>SSE 流式响应]
-        SVC[QueryService]
-    end
-
-    subgraph Agent[LangGraph Agent]
-        GRAPH[工作流节点图]
-    end
-
-    subgraph Infra[存储与模型服务 · docker compose]
-        META[(MySQL meta<br/>表 / 字段 / 指标元数据)]
-        DW[(MySQL dw<br/>业务明细数据)]
-        QD[(Qdrant<br/>字段与指标向量)]
-        ES[(Elasticsearch + ik<br/>字段取值全文索引)]
-        TEI[TEI Embedding<br/>bge-large-zh-v1.5]
-        LLM[LLM 服务<br/>Qwen3-32B]
-    end
-
-    UI -->|POST /api/query| RT --> SVC --> GRAPH
-    GRAPH --> META
-    GRAPH --> DW
-    GRAPH --> QD
-    GRAPH --> ES
-    GRAPH --> TEI
-    GRAPH --> LLM
-    GRAPH -.->|阶段事件 / 结果| UI
+```text
+Vue 3 前端 ──(POST /api/query, SSE)──▶ FastAPI ──▶ QueryService ──▶ LangGraph 工作流 ──▶ 结果表格
+                                                         │
+                                                         └──▶ MySQL / Qdrant / Elasticsearch / TEI / LLM
 ```
+
+| 层次 | 组件 | 作用 |
+| --- | --- | --- |
+| 前端 | Vue 3 + Vite | 对话界面，解析 SSE 事件渲染执行步骤与结果表格 |
+| 接口层 | FastAPI + Uvicorn | `main.py` 提供 `/api/query`，以 SSE 流式返回推理过程 |
+| 业务层 | QueryService | 组装运行时上下文与初始状态，驱动 LangGraph 执行 |
+| Agent 层 | LangGraph StateGraph | 12 个节点的工作流，见下一节 |
+| 元数据 | MySQL `meta` | 表信息、字段信息、指标定义、指标与字段关联 |
+| 业务数据 | MySQL `dw` | 订单等明细数据，供 `EXPLAIN` 校验与最终查询 |
+| 向量库 | Qdrant | 集合 `data-agent-column`（字段向量）、`data-agent-metrics`（指标向量） |
+| 全文索引 | Elasticsearch + IK | 索引 `data-agent-values`，按字段取值召回 |
+| 向量服务 | TEI + bge-large-zh-v1.5 | 输出 1024 维中文向量，支撑字段与指标召回 |
+| 模型服务 | Qwen3-32B（OpenAI 兼容接口） | 关键词扩展、Schema 裁剪、SQL 生成与纠错 |
 
 ## Agent 工作流
 
-基于 LangGraph `StateGraph` 构建，节点间按「并行召回 → 合并 → 裁剪 → 生成 → 校验 → 纠错 → 执行」的链路编排：
+工作流由 LangGraph `StateGraph` 编排：三类召回并行执行，合并后并行裁剪，生成阶段串行推进，`EXPLAIN` 校验失败时自动纠错重试。
 
-```mermaid
-flowchart TD
-    START([用户提问]) --> EK[extract_keywords<br/>jieba 抽取关键字]
-    EK --> RC[recall_column<br/>字段向量召回]
-    EK --> RM[recall_metric<br/>指标向量召回]
-    EK --> RV[recall_value<br/>字段取值召回]
-    RC --> MG[merge_retrieved_info<br/>合并信息 · 补全主外键]
-    RM --> MG
-    RV --> MG
-    MG --> FT[filter_table<br/>裁剪表与字段]
-    MG --> FM[filter_metric<br/>筛选指标]
-    FT --> AC[add_extra_context<br/>当前日期 + 数据库方言]
-    FM --> AC
-    AC --> GS[generate_sql]
-    GS --> VS{validate_sql<br/>EXPLAIN 校验}
-    VS -->|校验失败| CS[correct_sql]
-    CS --> EX[execute_sql]
-    VS -->|校验通过| EX
-    EX --> END([结果表格])
+```text
+extract_keywords ─▶ [recall_column | recall_metric | recall_value] ─▶ merge_retrieved_info
+                 ─▶ [filter_table | filter_metric] ─▶ add_extra_context ─▶ generate_sql
+                 ─▶ validate_sql ─┬─(通过)─▶ execute_sql ─▶ 结果表格
+                                  └─(失败)─▶ correct_sql ─▶ execute_sql ─▶ 结果表格
+
+[ ] 中的节点并行执行，其余节点按箭头顺序执行
 ```
 
 | 节点 | 职责 | 依赖组件 |
@@ -277,14 +252,7 @@ metrics:
 - 华东地区黄金会员的客单价是多少
 - 按月份统计订单量趋势
 
-## 已知问题与后续计划
-
-- **平台迁移风险**：`app/core/log.py`、`app/scripts/build_meta_knowledge.py`、`app/services/meta_knowledge_service.py` 使用了 `from Lib import uuid / argparse`、`from Lib.dataclasses import asdict`。目前在 Windows 虚拟环境中因 `.venv/Lib` 恰好可作为命名空间包解析而可用，迁移到 Linux 或容器环境会导入失败，应改为 `import uuid` / `import argparse` / `from dataclasses import asdict`。
-- **SQL 规划节点未接入**：`prompts/plan_sql.prompt` 已具备完整的查询规划提示词，但尚未注册到 `app/agent/graph.py`。
-- **知识库构建不幂等**：重复执行构建脚本会重复写入元数据与向量，需要重建时应先清空 `meta` 库与相应 Qdrant 集合 / ES 索引。
-- **密钥管理**：LLM 密钥目前明文写在 `conf/app_config.yaml`，建议改用环境变量或密钥管理服务。
-- **服务无鉴权与限流**：后端接口与依赖组件均为本地单机部署形态，未做认证、限流与多租户隔离。
-- **可观测性**：日志已按 `request_id` 串联，但缺少指标采集与链路追踪。
+- 
 
 ## 开源协议
 
